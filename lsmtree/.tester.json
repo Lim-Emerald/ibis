@@ -1,0 +1,11 @@
+{
+    "allow_change": [
+        "lsm/**/*.h",
+        "lsm/**/*.cpp",
+        "lsm/*.h",
+        "lsm/*.cpp"
+    ],
+    "tests": "test_lsm_granular",
+    "solutions": "private",
+    "disable_tsan": true
+}

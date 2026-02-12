@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -g -Wno-unused-parameter -Wno-unused-function CMakeFiles/bench_lsmtree.dir/bench/bench.cpp.o -o ../bench_lsmtree  ../libbenchmark.a libbis_lsmtree.a -lpthread -ldl 

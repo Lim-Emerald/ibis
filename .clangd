@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-I/home/lim/HSE/Projects/IBIS/contrib/gtest]

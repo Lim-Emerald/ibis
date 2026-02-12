@@ -1,0 +1,10 @@
+/home/lim/HSE/Projects/IBIS/build/CMakeFiles/benchmark.dir
+/home/lim/HSE/Projects/IBIS/build/CMakeFiles/gmock.dir
+/home/lim/HSE/Projects/IBIS/build/CMakeFiles/test-all.dir
+/home/lim/HSE/Projects/IBIS/build/CMakeFiles/edit_cache.dir
+/home/lim/HSE/Projects/IBIS/build/CMakeFiles/rebuild_cache.dir
+/home/lim/HSE/Projects/IBIS/build/lsmtree/CMakeFiles/bis_lsmtree.dir
+/home/lim/HSE/Projects/IBIS/build/lsmtree/CMakeFiles/test_lsmtree.dir
+/home/lim/HSE/Projects/IBIS/build/lsmtree/CMakeFiles/bench_lsmtree.dir
+/home/lim/HSE/Projects/IBIS/build/lsmtree/CMakeFiles/edit_cache.dir
+/home/lim/HSE/Projects/IBIS/build/lsmtree/CMakeFiles/rebuild_cache.dir
