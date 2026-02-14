@@ -1,5 +1,6 @@
 #include "lsm/lsm.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -16,68 +17,14 @@
 
 namespace lsm {
 
-// class LevelsProviderImpl final : public ILevelsProvider {
-//    public:
-//     size_t NumLevels() const override { return levels_.size(); }
-
-//     size_t NumTables(size_t level_index) const override {
-//         if (level_index >= levels_.size()) {
-//             return 0;
-//         }
-//         return levels_[level_index].size();
-//     }
-
-//     std::shared_ptr<const storage::IFile> GetTableFile(size_t level_index, size_t table_index) const override {
-//         return levels_.at(level_index).at(table_index);
-//     }
-
-//     void InsertTableFile(size_t level_index, size_t table_index, std::shared_ptr<const storage::IFile> file, std::optional<SSTableMetadata> metadata = std::nullopt) override {
-//         // Auto-create levels as needed
-//         if (levels_.size() <= level_index) {
-//             levels_.resize(level_index + 1);
-//             metadata_.resize(level_index + 1);
-//         }
-//         auto& v = levels_[level_index];
-//         auto& m = metadata_[level_index];
-//         if (table_index > v.size()) {
-//             table_index = v.size();
-//         }
-//         v.insert(v.begin() + table_index, std::move(file));
-
-//         if (metadata.has_value()) {
-//             m.insert(m.begin() + table_index, *metadata);
-//         } else {
-//             m.insert(m.begin() + table_index, std::nullopt);
-//         }
-//     }
-
-//     void EraseTable(size_t level_index, size_t table_index) override {
-//         auto& v = levels_.at(level_index);
-//         auto& m = metadata_.at(level_index);
-//         v.erase(v.begin() + table_index);
-//         m.erase(m.begin() + table_index);
-//     }
-
-//     std::optional<SSTableMetadata> GetTableMetadata(size_t level_index, size_t table_index) const override {
-//         if (level_index >= metadata_.size() || table_index >= metadata_[level_index].size()) {
-//             return std::nullopt;
-//         }
-//         return metadata_[level_index][table_index];
-//     }
-
-//    private:
-//     std::vector<std::vector<std::shared_ptr<const storage::IFile>>> levels_;
-//     std::vector<std::vector<std::optional<SSTableMetadata>>> metadata_;
-// };
-
 class SimpleLSMImpl : public ILSM {
 
    public:
-    SimpleLSMImpl(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory)
+    SimpleLSMImpl(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes)
         : options_(options), levels_provider_(levels_provider), sstable_factory_(sstable_factory) {
         mem_table_ = MakeMemTable(options_.max_level_skip_list);
         std::filesystem::create_directory(dir_);
-        buffer_pool_ = storage::MakeReadBufferPool(dir_, options_.entries_limit);
+        buffer_pool_ = storage::MakeReadBufferPool(dir_, options_.buffer_pool_size, options_.frame_size, read_bytes);
     }
 
     void Put(const UserKey& user_key, const Value& value) {
@@ -92,7 +39,7 @@ class SimpleLSMImpl : public ILSM {
 
     void CheckMemTable() {
         if (mem_table_->ApproximateMemoryUsage() > options_.memtable_bytes) {
-            std::shared_ptr<storage::IFile> file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_);
+            std::shared_ptr<storage::IFile> file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_, options_.frame_size);
             auto sstable_builder = sstable_factory_->NewFileBuilder(file);
             auto scan = mem_table_->MakeScan();
             auto object = scan->Next();
@@ -130,7 +77,7 @@ class SimpleLSMImpl : public ILSM {
 
     std::pair<std::shared_ptr<storage::IFile>, std::optional<SSTableMetadata>> MergeSSTables(const std::shared_ptr<const storage::IFile>& file1, const std::optional<SSTableMetadata>& meta1,
                                                                                              const std::shared_ptr<const storage::IFile>& file2, const std::optional<SSTableMetadata>& meta2) {
-        auto file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_);
+        auto file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_, options_.frame_size);
         std::optional<SSTableMetadata> meta = std::nullopt;
         if (meta1.has_value() && meta2.has_value()) {
             meta = SSTableMetadata();
@@ -268,11 +215,11 @@ class SimpleLSMImpl : public ILSM {
 
 class GranularLSMImpl : public ILSM {
    public:
-    GranularLSMImpl(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory)
+    GranularLSMImpl(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes)
         : options_(options), levels_provider_(levels_provider), sstable_factory_(sstable_factory) {
         mem_table_ = MakeMemTable(options_.max_level_skip_list);
         std::filesystem::create_directory(dir_);
-        buffer_pool_ = storage::MakeReadBufferPool(dir_, options_.entries_limit);
+        buffer_pool_ = storage::MakeReadBufferPool(dir_, options_.buffer_pool_size, options_.frame_size, read_bytes);
     }
 
     void Put(const UserKey& user_key, const Value& value) {
@@ -327,10 +274,14 @@ class GranularLSMImpl : public ILSM {
                                 sources.push_back(sstable_factory_->FromFile(file)->MakeScan());
                                 continue;
                             }
-                            auto filter_file = std::make_shared<storage::MemoryFile>(dir_ + "/filter_" + std::to_string(filter_sequence_number_++));
-                            auto serialized_filter = filter_builder->Serialize();
-                            filter_file->Write(serialized_filter.data(), serialized_filter.size());
-                            levels_provider_->InsertTableFile(lvl, ind++, file, filter_file, meta);
+                            if (options_.bloom_filter_size != 0) {
+                                auto filter_file = std::make_shared<storage::MemoryFile>(dir_ + "/filter_" + std::to_string(filter_sequence_number_++));
+                                auto serialized_filter = filter_builder->Serialize();
+                                filter_file->Write(serialized_filter.data(), serialized_filter.size());
+                                levels_provider_->InsertTableFile(lvl, ind++, file, filter_file, meta);
+                            } else {
+                                levels_provider_->InsertTableFile(lvl, ind++, file, nullptr, meta);
+                            }
                         }
                     }
                 } else {
@@ -342,10 +293,14 @@ class GranularLSMImpl : public ILSM {
                             sources.push_back(sstable_factory_->FromFile(file)->MakeScan());
                             continue;
                         }
-                        auto filter_file = std::make_shared<storage::MemoryFile>(dir_ + "/filter_" + std::to_string(filter_sequence_number_++));
-                        auto serialized_filter = filter_builder->Serialize();
-                        filter_file->Write(serialized_filter.data(), serialized_filter.size());
-                        levels_provider_->InsertTableFile(lvl, ind++, file, filter_file, meta);
+                        if (options_.bloom_filter_size != 0) {
+                            auto filter_file = std::make_shared<storage::MemoryFile>(dir_ + "/filter_" + std::to_string(filter_sequence_number_++));
+                            auto serialized_filter = filter_builder->Serialize();
+                            filter_file->Write(serialized_filter.data(), serialized_filter.size());
+                            levels_provider_->InsertTableFile(lvl, ind++, file, filter_file, meta);
+                        } else {
+                            levels_provider_->InsertTableFile(lvl, ind++, file, nullptr, meta);
+                        }
                     }
                 }
             }
@@ -370,7 +325,7 @@ class GranularLSMImpl : public ILSM {
         std::vector<std::pair<InternalKey, Value>> objects;
         for (size_t ind = 0; ind < keys.size(); ++ind) {
             if (sum_mem + keys[ind].first > options_.max_sstable_size) {
-                result.push_back(MakeFileFromVector(objects, max_tables-- > 0));
+                result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && max_tables-- > 0));
                 objects.resize(0);
                 sum_mem = sizeof(uint64_t);
             }
@@ -380,13 +335,13 @@ class GranularLSMImpl : public ILSM {
             }
         }
         if (!objects.empty()) {
-            result.push_back(MakeFileFromVector(objects, max_tables-- > 0));
+            result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && max_tables-- > 0));
         }
         return result;
     }
 
     std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>> MakeFileFromVector(const std::vector<std::pair<InternalKey, Value>>& objects, bool generate_filter) {
-        std::shared_ptr<storage::IFile> file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_);
+        std::shared_ptr<storage::IFile> file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_, options_.frame_size);
         auto sstable_builder = sstable_factory_->NewFileBuilder(file);
         std::shared_ptr<IFilterBuilder> filter_builder = nullptr;
         if (generate_filter) {
@@ -422,9 +377,11 @@ class GranularLSMImpl : public ILSM {
                         r = ind;
                     }
                 }
-                auto filter = MakeFilterDeserializer()->Deserialize(levels_provider_->GetTableBloomFilter(lvl, r - 1)->Read(0, options_.bloom_filter_size));
-                if (!filter->MayContain(user_key)) {
-                    continue;
+                if (options_.bloom_filter_size != 0) {
+                    auto filter = MakeFilterDeserializer()->Deserialize(levels_provider_->GetTableBloomFilter(lvl, r - 1)->Read(0, options_.bloom_filter_size));
+                    if (!filter->MayContain(user_key)) {
+                        continue;
+                    }
                 }
                 auto sstable_reader = sstable_factory_->FromFile(levels_provider_->GetTableFile(lvl, r - 1));
                 Value value;
@@ -551,16 +508,12 @@ class GranularLSMImpl : public ILSM {
     std::shared_ptr<storage::IReadBufferPool> buffer_pool_;
 };
 
-// std::shared_ptr<ILevelsProvider> MakeLevelsProvider() {
-//     return std::make_shared<LevelsProviderImpl>();
-// }
-
-std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory) {
-    return std::make_unique<SimpleLSMImpl>(options, levels_provider, sstable_factory);
+std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes) {
+    return std::make_unique<SimpleLSMImpl>(options, levels_provider, sstable_factory, read_bytes);
 }
 
-std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory) {
-    return std::make_unique<GranularLSMImpl>(options, levels_provider, sstable_factory);
+std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes) {
+    return std::make_unique<GranularLSMImpl>(options, levels_provider, sstable_factory, read_bytes);
 }
 
 }  // namespace lsm

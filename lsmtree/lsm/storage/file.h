@@ -22,7 +22,7 @@ class IFile {
 
 class BufferedMemoryFile : public IFile {
    public:
-    BufferedMemoryFile(const std::string& dir, uint64_t table_id, const std::shared_ptr<IReadBufferPool>& buffer_pool) : table_id_(table_id), buffer_pool_(buffer_pool), dir_(dir) {}
+    BufferedMemoryFile(const std::string& dir, uint64_t table_id, const std::shared_ptr<IReadBufferPool>& buffer_pool, uint64_t frame_size = 4096) : table_id_(table_id), frame_size_(frame_size), buffer_pool_(buffer_pool), dir_(dir) {}
 
     std::vector<uint8_t> Read(uint64_t offset, uint64_t bytes) const override {
         if (offset + bytes > Size()) {
@@ -30,18 +30,18 @@ class BufferedMemoryFile : public IFile {
                                      std::to_string(size_) + ")");
         }
         std::vector<uint8_t> result(bytes);
-        uint64_t l = offset / kFrameSize, r = (offset + bytes - 1) / kFrameSize;
+        uint64_t l = offset / frame_size_, r = (offset + bytes - 1) / frame_size_;
         auto frames = buffer_pool_->GetFrames(table_id_, l, r);
         if (l == r) {
-            std::memcpy(result.data(), frames[0]->Data() + offset % kFrameSize, bytes);
+            std::memcpy(result.data(), frames[0]->Data() + offset % frame_size_, bytes);
         } else {
-            uint64_t ost = offset % kFrameSize;
-            uint64_t iost = kFrameSize - ost;
+            uint64_t ost = offset % frame_size_;
+            uint64_t iost = frame_size_ - ost;
             std::memcpy(result.data(), frames[0]->Data() + ost, iost);
             for (uint64_t ind = l + 1; ind < r; ++ind) {
-                std::memcpy(result.data() + iost + (ind - l - 1) * kFrameSize, frames[ind - l]->Data(), kFrameSize);
+                std::memcpy(result.data() + iost + (ind - l - 1) * frame_size_, frames[ind - l]->Data(), frame_size_);
             }
-            std::memcpy(result.data() + iost + (r - l - 1) * kFrameSize, frames[r - l]->Data(), bytes - iost - (r - l - 1) * kFrameSize);
+            std::memcpy(result.data() + iost + (r - l - 1) * frame_size_, frames[r - l]->Data(), bytes - iost - (r - l - 1) * frame_size_);
         }
         return result;
     }
@@ -60,13 +60,14 @@ class BufferedMemoryFile : public IFile {
    private:
     uint64_t size_ = 0;
     uint64_t table_id_;
+    uint64_t frame_size_;
     std::shared_ptr<IReadBufferPool> buffer_pool_;
     std::string dir_;
 };
 
 class MemoryFile : public IFile {
    public:
-    MemoryFile(const std::string& path) : path_(path) {}
+    MemoryFile(const std::string& path, uint64_t* read_bytes = new uint64_t()) : read_bytes_(read_bytes), path_(path) {}
 
     std::vector<uint8_t> Read(uint64_t offset, uint64_t bytes) const override {
         if (offset + bytes > Size()) {
@@ -77,6 +78,7 @@ class MemoryFile : public IFile {
         std::ifstream file(path_, std::ios::binary);
         file.seekg(offset);
         file.read(reinterpret_cast<char*>(result.data()), result.size());
+        *read_bytes_ += result.size();
         file.close();
         return result;
     }
@@ -94,6 +96,7 @@ class MemoryFile : public IFile {
 
    private:
     uint64_t size_ = 0;
+    uint64_t* read_bytes_;
     std::string path_;
 };
 

@@ -7,8 +7,6 @@
 
 namespace lsm::storage {
 
-static const uint64_t kFrameSize = 4096;
-
 class IFrame {
    public:
     virtual uint8_t* Data() = 0;
@@ -34,7 +32,7 @@ class IReadFrameProvider {
     virtual ~IReadFrameProvider() = default;
 };
 
-std::shared_ptr<IReadFrameProvider> MakeReadFrameProvider(const std::string& dir);
+std::shared_ptr<IReadFrameProvider> MakeReadFrameProvider(const std::string& dir, uint64_t frame_size, uint64_t* read_bytes);
 
 class IReadBufferPool {
    public:
@@ -44,6 +42,6 @@ class IReadBufferPool {
     virtual ~IReadBufferPool() = default;
 };
 
-std::shared_ptr<IReadBufferPool> MakeReadBufferPool(std::string dir, uint64_t entries_limit);
+std::shared_ptr<IReadBufferPool> MakeReadBufferPool(std::string dir, uint64_t pool_size, uint64_t frame_size = 4096, uint64_t* read_bytes = new uint64_t());
 
 }  // namespace lsm::storage

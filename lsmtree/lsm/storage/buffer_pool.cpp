@@ -15,7 +15,7 @@ namespace lsm::storage {
 
 class ReadFrameProvider : public IReadFrameProvider {
    public:
-    ReadFrameProvider(const std::string& dir) : dir_(dir) {}
+    ReadFrameProvider(const std::string& dir, uint64_t frame_size, uint64_t* read_bytes) : frame_size_(frame_size), read_bytes_(read_bytes), dir_(dir) {}
 
     void Start(uint32_t table_id) override {
         file_ = std::make_unique<std::ifstream>(dir_ + "/sstable_" + std::to_string(table_id), std::ios::binary);
@@ -25,9 +25,10 @@ class ReadFrameProvider : public IReadFrameProvider {
         if (!file_) {
             Start(id.table_id);
         }
-        std::vector<uint8_t> buffer(kFrameSize);
-        file_->seekg(id.page_id * kFrameSize);
+        std::vector<uint8_t> buffer(frame_size_);
+        file_->seekg(id.page_id * frame_size_);
         file_->read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+        *read_bytes_ += buffer.size();
         return std::make_shared<ReadFrame>(buffer);
     }
 
@@ -52,11 +53,13 @@ class ReadFrameProvider : public IReadFrameProvider {
         std::vector<uint8_t> storage_;
     };
 
+    uint64_t frame_size_;
+    uint64_t* read_bytes_;
     std::string dir_;
     std::unique_ptr<std::ifstream> file_ = nullptr;
 };
 
-std::shared_ptr<IReadFrameProvider> MakeReadFrameProvider(const std::string& dir) { return std::make_shared<ReadFrameProvider>(dir); }
+std::shared_ptr<IReadFrameProvider> MakeReadFrameProvider(const std::string& dir, uint64_t frame_size, uint64_t* read_bytes) { return std::make_shared<ReadFrameProvider>(dir, frame_size, read_bytes); }
 
 class ReadBufferPool : public IReadBufferPool {
    public:
@@ -125,6 +128,6 @@ class ReadBufferPool : public IReadBufferPool {
     uint64_t entries_limit_;
 };
 
-std::shared_ptr<IReadBufferPool> MakeReadBufferPool(std::string dir, uint64_t entries_limit) { return std::make_shared<ReadBufferPool>(MakeReadFrameProvider(dir), entries_limit); }
+std::shared_ptr<IReadBufferPool> MakeReadBufferPool(std::string dir, uint64_t pool_size, uint64_t frame_size, uint64_t* read_bytes) { return std::make_shared<ReadBufferPool>(MakeReadFrameProvider(dir, frame_size, read_bytes), pool_size / frame_size); }
 
 }  // namespace lsm::storage

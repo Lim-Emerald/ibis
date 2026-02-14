@@ -100,7 +100,8 @@ class ILevelsProvider {
 // After compaction each level contains at most ONE SSTable file of arbitrary size
 // Simple, predictable structure with low write amplification
 struct LsmOptions {
-    uint64_t entries_limit = 64ull * 1024 * 1024 / storage::kFrameSize;
+    uint64_t frame_size = 4096;
+    uint64_t buffer_pool_size = 64ull * 1024 * 1024;
     uint64_t memtable_bytes = 64ull * 1024 * 1024;
     uint32_t max_level_skip_list = 20;
     // Compaction trigger: start merging a level when it reaches this many files
@@ -112,7 +113,8 @@ struct LsmOptions {
 // Each level can store many SSTables with exponentially growing capacity
 // Better read performance and more granular compaction at cost of write amplification
 struct GranularLsmOptions {
-    uint64_t entries_limit = 64ull * 1024 * 1024 / storage::kFrameSize;
+    uint64_t frame_size = 4096;
+    uint64_t buffer_pool_size = 64ull * 1024 * 1024;
     uint64_t memtable_bytes = 64ull * 1024 * 1024;
     // Target SSTable size
     // Actual files may be up to max_sstable_size plus size of one key
@@ -131,9 +133,9 @@ struct GranularLsmOptions {
 std::shared_ptr<ILevelsProvider> MakeLevelsProvider();
 
 // Create a LSM instance (single file per level)
-std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory);
+std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes = new uint64_t());
 
 // Create a granular LSM instance (multiple size-bounded files per level)
-std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory);
+std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes = new uint64_t());
 
 }  // namespace lsm
