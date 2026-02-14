@@ -18,7 +18,7 @@ TEST(SSTable, Scan) {
     auto factory = MakeSSTableFileFactory();
 
     std::filesystem::create_directory("test");
-    auto buffer_pool = storage::MakeReadBufferPool("test", 100);
+    auto buffer_pool = storage::MakeReadBufferPool("test", 16348);
     auto file = std::make_shared<storage::BufferedMemoryFile>("test", 1, buffer_pool);
 
     UserKey a{'a'};
@@ -72,7 +72,7 @@ TEST(SSTable, Get) {
     auto factory = MakeSSTableFileFactory();
 
     std::filesystem::create_directory("test");
-    auto buffer_pool = storage::MakeReadBufferPool("test", 100);
+    auto buffer_pool = storage::MakeReadBufferPool("test", 16348);
     auto file = std::make_shared<storage::BufferedMemoryFile>("test", 1, buffer_pool);
 
     UserKey a{'a'};
@@ -156,7 +156,7 @@ UserKey GenerateRandomKey(std::mt19937& rng, int min_len = 7, int max_len = 11) 
 
 TEST(SSTable, ReaderUsesSmallReads) {
     std::filesystem::create_directory("test");
-    auto buffer_pool = storage::MakeReadBufferPool("test", 100);
+    auto buffer_pool = storage::MakeReadBufferPool("test", 16348);
     auto memory_file = std::make_shared<storage::BufferedMemoryFile>("test", 1, buffer_pool);
     auto tracking_file = std::make_shared<TrackingFile>(memory_file);
 
@@ -211,7 +211,7 @@ TEST(SSTable, GetWithSequenceNumber) {
     auto factory = MakeSSTableFileFactory();
 
     std::filesystem::create_directory("test");
-    auto buffer_pool = storage::MakeReadBufferPool("test", 100);
+    auto buffer_pool = storage::MakeReadBufferPool("test", 16348);
     auto file = std::make_shared<storage::BufferedMemoryFile>("test", 1, buffer_pool);
 
     UserKey k{1, 2, 3};
