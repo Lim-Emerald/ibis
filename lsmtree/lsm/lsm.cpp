@@ -308,29 +308,40 @@ class GranularLSMImpl : public ILSM {
     }
 
     std::vector<std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>>> GetFilesSplitByKeys(std::shared_ptr<IStream<std::pair<InternalKey, Value>>> scan, size_t max_tables) {
-        std::vector<std::pair<uint64_t, std::vector<std::pair<InternalKey, Value>>>> keys;
-        auto object = scan->Next();
-        while (object.has_value()) {
-            if (!keys.empty() && keys.back().second.back().first.user_key == object->first.user_key) {
-                keys.back().first += 3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size();
-                keys.back().second.push_back(*object);
-            } else {
-                keys.push_back({3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size(), {*object}});
-            }
-            object = scan->Next();
-        }
-
         std::vector<std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>>> result;
         uint64_t sum_mem = sizeof(uint64_t);
         std::vector<std::pair<InternalKey, Value>> objects;
-        for (size_t ind = 0; ind < keys.size(); ++ind) {
-            if (sum_mem + keys[ind].first > options_.max_sstable_size) {
+        uint64_t key_mem = 0;
+        std::vector<std::pair<InternalKey, Value>> key_objects;
+        auto object = scan->Next();
+        while (object.has_value()) {
+            if (!key_objects.empty() && key_objects.back().first.user_key == object->first.user_key) {
+                key_mem += 3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size();
+                key_objects.push_back(*object);
+            } else {
+                if (sum_mem + key_mem > options_.max_sstable_size) {
+                    result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && max_tables-- > 0));
+                    objects.resize(0);
+                    sum_mem = sizeof(uint64_t);
+                }
+                sum_mem += key_mem;
+                for (auto& obj : key_objects) {
+                    objects.push_back(obj);
+                }
+                key_objects.resize(0);
+                key_mem = 3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size();
+                key_objects.push_back(*object);
+            }
+            object = scan->Next();
+        }
+        if (!key_objects.empty()) {
+            if (sum_mem + key_mem > options_.max_sstable_size) {
                 result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && max_tables-- > 0));
                 objects.resize(0);
                 sum_mem = sizeof(uint64_t);
             }
-            sum_mem += keys[ind].first;
-            for (auto& obj : keys[ind].second) {
+            sum_mem += key_mem;
+            for (auto& obj : key_objects) {
                 objects.push_back(obj);
             }
         }
