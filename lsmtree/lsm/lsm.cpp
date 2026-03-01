@@ -519,12 +519,294 @@ class GranularLSMImpl : public ILSM {
     std::shared_ptr<storage::IReadBufferPool> buffer_pool_;
 };
 
+class LeveledLSMImpl : public ILSM {
+   public:
+    LeveledLSMImpl(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes)
+        : options_(options), levels_provider_(levels_provider), sstable_factory_(sstable_factory) {
+        mem_table_ = MakeMemTable(options_.max_level_skip_list);
+        std::filesystem::create_directory(dir_);
+        buffer_pool_ = storage::MakeReadBufferPool(dir_, options_.buffer_pool_size, options_.frame_size, read_bytes);
+    }
+
+    void Put(const UserKey& user_key, const Value& value) {
+        mem_table_->Add(++sequence_number_, user_key, value);
+        CheckMemTable();
+    }
+
+    void Delete(const UserKey& user_key) {
+        mem_table_->Delete(++sequence_number_, user_key);
+        CheckMemTable();
+    }
+
+    void CheckMemTable() {
+        if (mem_table_->ApproximateMemoryUsage() > options_.memtable_bytes) {
+            std::vector<std::shared_ptr<IStream<std::pair<InternalKey, Value>>>> sources(1, mem_table_->MakeScan());
+            uint64_t sources_mem = mem_table_->ApproximateMemoryUsage();
+            mem_table_ = MakeMemTable(options_.max_level_skip_list);
+            for (size_t level_index = 0, level_capacity = options_.l0_capacity; !sources.empty(); ++level_index, level_capacity *= options_.level_size_multiplier) {
+                for (size_t table_index = 0; table_index < levels_provider_->NumTables(level_index); ++table_index) {
+                    sources.push_back(sstable_factory_->FromFile(levels_provider_->GetTableFile(level_index, table_index))->MakeScan());
+                    sources_mem += levels_provider_->GetTableMetadata(level_index, table_index)->file_size;
+                }
+                while (levels_provider_->NumTables(level_index)) {
+                    levels_provider_->EraseTable(level_index, levels_provider_->NumTables(level_index) - 1);
+                }
+
+                if (sources_mem > options_.max_sstable_size * (level_capacity - 1)) {
+                    continue;
+                }
+                auto sources_scan = MakeMerger(sources);
+                sources_mem = 0;
+                sources.resize(0);
+
+                auto files = GetFilesSplitByKeys(sources_scan, level_capacity - 1);
+                if (files.size() < level_capacity) {
+                    for (auto [sst_and_filter, meta] : files) {
+                        auto [file, filter_builder] = sst_and_filter;
+                        std::shared_ptr<storage::MemoryFile> filter_file = nullptr;
+                        if (options_.bloom_filter_size) {
+                            filter_file = std::make_shared<storage::MemoryFile>(dir_ + "/filter_" + std::to_string(filter_sequence_number_++));
+                            auto serialized_filter = filter_builder->Serialize();
+                            filter_file->Write(serialized_filter.data(), serialized_filter.size());
+                        }
+                        levels_provider_->InsertTableFile(level_index, levels_provider_->NumTables(level_index), file, filter_file, meta);
+                    }
+                } else {
+                    for (auto [sst_and_filter, meta] : files) {
+                        auto [file, filter_builder] = sst_and_filter;
+                        sources_mem += file->Size();
+                        sources.push_back(sstable_factory_->FromFile(file)->MakeScan());
+                    }
+                }
+            }
+        }
+    }
+
+    std::vector<std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>>> GetFilesSplitByKeys(std::shared_ptr<IStream<std::pair<InternalKey, Value>>> scan, size_t max_tables) {
+        std::vector<std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>>> result;
+        uint64_t sum_mem = sizeof(uint64_t);
+        std::vector<std::pair<InternalKey, Value>> objects;
+        uint64_t key_mem = 0;
+        std::vector<std::pair<InternalKey, Value>> key_objects;
+        auto object = scan->Next();
+        while (object.has_value()) {
+            if (!key_objects.empty() && key_objects.back().first.user_key == object->first.user_key) {
+                key_mem += 3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size();
+                key_objects.push_back(*object);
+            } else {
+                if (sum_mem + key_mem > options_.max_sstable_size) {
+                    result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && (max_tables--) > 0));
+                    objects.resize(0);
+                    sum_mem = sizeof(uint64_t);
+                }
+                sum_mem += key_mem;
+                for (auto& obj : key_objects) {
+                    objects.push_back(obj);
+                }
+                key_objects.resize(0);
+                key_mem = 3 * sizeof(uint64_t) + object->first.user_key.size() + object->second.size();
+                key_objects.push_back(*object);
+            }
+            object = scan->Next();
+        }
+        if (!key_objects.empty()) {
+            if (sum_mem + key_mem > options_.max_sstable_size) {
+                result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && (max_tables--) > 0));
+                objects.resize(0);
+                sum_mem = sizeof(uint64_t);
+            }
+            sum_mem += key_mem;
+            for (auto& obj : key_objects) {
+                objects.push_back(obj);
+            }
+        }
+        if (!objects.empty()) {
+            result.push_back(MakeFileFromVector(objects, options_.bloom_filter_size != 0 && (max_tables--) > 0));
+        }
+        return result;
+    }
+
+    std::pair<std::pair<std::shared_ptr<storage::IFile>, std::shared_ptr<IFilterBuilder>>, std::optional<SSTableMetadata>> MakeFileFromVector(const std::vector<std::pair<InternalKey, Value>>& objects, bool generate_filter) {
+        std::shared_ptr<storage::IFile> file = std::make_shared<storage::BufferedMemoryFile>(dir_, sstable_sequence_number_++, buffer_pool_, options_.frame_size);
+        auto sstable_builder = sstable_factory_->NewFileBuilder(file);
+        std::shared_ptr<IFilterBuilder> filter_builder = nullptr;
+        if (generate_filter) {
+            filter_builder = MakeFilterBuilder(8 * options_.bloom_filter_size, options_.bloom_filter_hash_count);
+        }
+        for (auto& object : objects) {
+            sstable_builder->Add(object.first, object.second);
+            if (generate_filter) {
+                filter_builder->Add(object.first.user_key);
+            }
+        }
+        sstable_builder->Finish();
+        SSTableMetadata meta = {objects.front().first.user_key, objects.back().first.user_key, file->Size()};
+        return {{file, filter_builder}, meta};
+    }
+
+    std::optional<Value> Get(const UserKey& user_key, uint64_t sequence_number = std::numeric_limits<uint64_t>::max()) const {
+        Value value;
+        auto type = mem_table_->Get(user_key, &value, sequence_number);
+        if (type == IMemTable::GetKind::kFound) {
+            return value;
+        } else if (type == IMemTable::GetKind::kDeletion) {
+            return std::nullopt;
+        } else {
+            for (size_t lvl = 0; lvl < levels_provider_->NumLevels(); ++lvl) {
+                if (!levels_provider_->NumTables(lvl)) {
+                    continue;
+                }
+                size_t l = 0, r = levels_provider_->NumTables(lvl);
+                while (r - l > 1) {
+                    size_t ind = (l + r) / 2;
+                    auto meta = levels_provider_->GetTableMetadata(lvl, ind - 1);
+                    if (meta.has_value() && meta->max_key < user_key) {
+                        l = ind;
+                    } else {
+                        r = ind;
+                    }
+                }
+                if (options_.bloom_filter_size != 0) {
+                    auto filter = MakeFilterDeserializer()->Deserialize(levels_provider_->GetTableBloomFilter(lvl, r - 1)->Read(0, options_.bloom_filter_size));
+                    if (!filter->MayContain(user_key)) {
+                        continue;
+                    }
+                }
+                auto sstable_reader = sstable_factory_->FromFile(levels_provider_->GetTableFile(lvl, r - 1));
+                Value value;
+                auto type = sstable_reader->Get(user_key, &value, sequence_number);
+                if (type == ISSTableReader::GetKind::kFound) {
+                    return value;
+                } else if (type == ISSTableReader::GetKind::kDeletion) {
+                    return std::nullopt;
+                }
+            }
+            return std::nullopt;
+        }
+    }
+
+    std::shared_ptr<IStream<std::pair<UserKey, Value>>> Scan(const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key,
+                                                             uint64_t sequence_number = std::numeric_limits<uint64_t>::max()) const {
+        return std::make_shared<LeveledLSMStream>(mem_table_, levels_provider_, sstable_factory_, start_key, end_key, sequence_number);
+    }
+
+    virtual uint64_t GetCurrentSequenceNumber() const { return sequence_number_; }
+
+    virtual ~LeveledLSMImpl() {
+        std::filesystem::remove_all(dir_);
+    }
+
+   private:
+    class LeveledLSMStream : public IStream<std::pair<UserKey, Value>> {
+       public:
+        LeveledLSMStream(std::shared_ptr<IMemTable> mem_table, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory,
+                          const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key, uint64_t sequence_number)
+            : sequence_number_(sequence_number), start_key_(start_key), end_key_(end_key) {
+            std::vector<std::shared_ptr<IStream<std::pair<InternalKey, Value>>>> sources;
+            sources.push_back(mem_table->MakeScan());
+            for (size_t lvl = 0; lvl < levels_provider->NumLevels(); ++lvl) {
+                if (levels_provider->NumTables(lvl)) {
+                    sources.push_back(std::make_shared<LevelLSMStream>(lvl, levels_provider, sstable_factory));
+                }
+            }
+            merge_scan_ = MakeMerger<std::pair<InternalKey, Value>>(sources);
+        }
+
+        std::optional<std::pair<UserKey, Value>> Next() {
+            std::optional<std::pair<InternalKey, Value>> object;
+            do {
+                do {
+                    object = merge_scan_->Next();
+                    if (start_key_.has_value()) {
+                        while (object.has_value() && object->first.user_key < *start_key_) {
+                            object = merge_scan_->Next();
+                        }
+                    }
+                    if (!object.has_value() || (end_key_.has_value() && object->first.user_key >= *end_key_)) {
+                        return std::nullopt;
+                    }
+                } while (sequence_number_ < object->first.sequence_number);
+                if (object->first.type == ValueType::kDeletion) {
+                    used_ = object->first.user_key;
+                }
+            } while (object->first.user_key == used_);
+            used_ = object->first.user_key;
+            return std::make_pair(object->first.user_key, object->second);
+        }
+
+       private:
+        UserKey used_ = {};
+        std::shared_ptr<IMerger<std::pair<InternalKey, Value>>> merge_scan_;
+        uint64_t sequence_number_;
+        std::optional<UserKey> start_key_;
+        std::optional<UserKey> end_key_;
+    };
+
+    class LevelLSMStream : public IStream<std::pair<InternalKey, Value>> {
+       public:
+        LevelLSMStream(size_t level, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory)
+            : level_(level), levels_provider_(levels_provider), sstable_factory_(sstable_factory) {
+            current_stream_ = sstable_factory_->FromFile(levels_provider->GetTableFile(level_, ind_++))->MakeScan();
+        }
+
+        std::optional<std::pair<InternalKey, Value>> Next() {
+            auto object = current_stream_->Next();
+            while (!object.has_value()) {
+                if (ind_ == levels_provider_->NumTables(level_)) {
+                    return std::nullopt;
+                }
+                current_stream_ = sstable_factory_->FromFile(levels_provider_->GetTableFile(level_, ind_++))->MakeScan();
+                object = current_stream_->Next();
+            }
+            return object;
+        }
+
+       private:
+        size_t level_;
+        size_t ind_ = 0;
+        std::shared_ptr<ILevelsProvider> levels_provider_;
+        std::shared_ptr<ISSTableSerializer> sstable_factory_;
+        std::shared_ptr<IStream<std::pair<InternalKey, Value>>> current_stream_;
+    };
+
+    class StreamFromVector : public IStream<std::pair<InternalKey, Value>> {
+       public:
+        StreamFromVector(std::vector<std::pair<InternalKey, Value>> data) : data_(data) {}
+
+        std::optional<std::pair<InternalKey, Value>> Next() {
+            if (ind_ == data_.size()) {
+                return std::nullopt;
+            }
+            return data_[ind_++];
+        }
+
+       private:
+        size_t ind_ = 0;
+        std::vector<std::pair<InternalKey, Value>> data_;
+    };
+
+   private:
+    uint64_t sequence_number_ = 0;
+    uint64_t sstable_sequence_number_ = 0;
+    uint64_t filter_sequence_number_ = 0;
+    std::string dir_ = "leveled_lsm";
+    GranularLsmOptions options_;
+    std::shared_ptr<IMemTable> mem_table_;
+    std::shared_ptr<ILevelsProvider> levels_provider_;
+    std::shared_ptr<ISSTableSerializer> sstable_factory_;
+    std::shared_ptr<storage::IReadBufferPool> buffer_pool_;
+};
+
 std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes) {
     return std::make_unique<SimpleLSMImpl>(options, levels_provider, sstable_factory, read_bytes);
 }
 
 std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes) {
     return std::make_unique<GranularLSMImpl>(options, levels_provider, sstable_factory, read_bytes);
+}
+
+std::unique_ptr<ILSM> MakeLeveledLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes) {
+    return std::make_unique<LeveledLSMImpl>(options, levels_provider, sstable_factory, read_bytes);
 }
 
 }  // namespace lsm

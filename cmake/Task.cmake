@@ -3,8 +3,8 @@ option(TEST_SOLUTION "Build solution" OFF)
 function(declare_task)
     set(HW_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-    file(GLOB_RECURSE SOURCES ${HW_DIR}/*.cpp)
-    file(GLOB_RECURSE HEADERS ${HW_DIR}/*.h ${HW_DIR}/*.hpp)
+    file(GLOB_RECURSE SOURCES ${HW_DIR}/*.c ${HW_DIR}/*.cpp)
+    file(GLOB_RECURSE HEADERS ${HW_DIR}/*.h ${HW_DIR}/*.hh ${HW_DIR}/*.hpp)
 
     get_filename_component(HW_NAME ${HW_DIR} NAME)
 
@@ -19,17 +19,18 @@ function(declare_task)
         add_library(${HW_BIS} INTERFACE ${HEADERS})
         target_include_directories(${HW_BIS} INTERFACE ${HW_DIR})
     endif()
+    target_link_libraries(${HW_BIS} PUBLIC Boost::locale)
 
     file(GLOB_RECURSE TEST_SOURCES ${HW_DIR}/tests/*.cpp)
     file(GLOB_RECURSE BENCH_SOURCES ${HW_DIR}/bench/*.cpp)
     
     add_executable(${HW_TESTS} ${TEST_SOURCES} ${CMAKE_SOURCE_DIR}/contrib/gmock_main.cc)
-    target_link_libraries(${HW_TESTS} gmock ${HW_BIS})
+    target_link_libraries(${HW_TESTS} gmock ${HW_BIS} ${Boost_LIBRARIES})
     target_include_directories(${HW_TESTS} PUBLIC ${HW_DIR})
 
 
     add_executable(${HW_BENCH} ${BENCH_SOURCES})
-    target_link_libraries(${HW_BENCH} benchmark ${HW_BIS})
+    target_link_libraries(${HW_BENCH} benchmark ${HW_BIS} ${Boost_LIBRARIES})
     target_include_directories(${HW_BENCH} PUBLIC ${HW_DIR})
 
     if (TEST_SOLUTION)

@@ -13,7 +13,7 @@
 namespace lsm {
 
 // Test implementation of ILevelsProvider that stores SSTables in memory
-class TestVectorLevelsProvider final : public ILevelsProvider {
+class TestLevelsProvider final : public ILevelsProvider {
    public:
     size_t NumLevels() const override { return levels_.size(); }
 

@@ -15,7 +15,7 @@ namespace {
 
 TEST(LSM, PutGet) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{'a'};
@@ -29,7 +29,7 @@ TEST(LSM, PutGet) {
 
 TEST(LSM, Delete) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{'a'};
@@ -50,7 +50,7 @@ TEST(LSM, PutGetWithFlushing) {
     options.memtable_bytes = 32;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(options, files_provider, sstable_factory);
 
     uint32_t total_keys = 0;
@@ -79,7 +79,7 @@ TEST(LSM, MultipleFlushesLatestWins) {
     options.memtable_bytes = 16'000;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -124,7 +124,7 @@ TEST(LSM, LevelsStructureScalesCorrectly) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
 
     for (int n : {(1 << 7), (1 << 10), (1 << 12)}) {
-        auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+        auto files_provider = std::make_shared<TestLevelsProvider>();
         std::shared_ptr<ILSM> lsm = MakeLsm(options, files_provider, sstable_factory);
 
         for (int i = 0; i < n; i++) {
@@ -153,7 +153,7 @@ TEST(LSM, WriteAmplificationBounded) {
     options.memtable_bytes = 1024;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -196,7 +196,7 @@ TEST(LSM, SearchComplexityByKeyAge) {
     options.memtable_bytes = 124;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -241,7 +241,7 @@ TEST(LSM, SearchComplexityByKeyAge) {
 
 TEST(LSM, GetWithSequenceNumber) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{.memtable_bytes = 100}, files_provider, sstable_factory);
 
     UserKey k{1, 2, 3};
@@ -272,7 +272,7 @@ TEST(LSM, GetWithSequenceNumber) {
 }
 TEST(LSM, ScanMultipleKeys) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{1};
@@ -295,7 +295,7 @@ TEST(LSM, ScanMultipleKeys) {
 
 TEST(LSM, ScanWithRange) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     for (int i = 0; i < 10; ++i) {
@@ -316,7 +316,7 @@ TEST(LSM, ScanWithRange) {
 
 TEST(LSM, ScanSkipsTombstones) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{1};
@@ -341,7 +341,7 @@ TEST(LSM, ScanSkipsTombstones) {
 
 TEST(LSM, ScanDeduplicatesVersions) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{}, files_provider, sstable_factory);
 
     UserKey k{1};
@@ -362,7 +362,7 @@ TEST(LSM, ScanDeduplicatesVersions) {
 
 TEST(LSM, ScanAcrossLevels) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{.memtable_bytes = 1000}, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -399,7 +399,7 @@ TEST(LSM, ScanAcrossLevels) {
 
 TEST(LSM, ScanWithSequenceNumber) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeLsm(LsmOptions{.memtable_bytes = 1000}, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;

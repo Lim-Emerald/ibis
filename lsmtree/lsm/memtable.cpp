@@ -75,11 +75,9 @@ class MemTableImpl : public IMemTable {
         MemTableStream(std::shared_ptr<Node> head) : cur_(head->links[0]) {}
 
         std::optional<std::pair<InternalKey, Value>> Next() {
-            // std::cerr << 1 << std::endl;
             if (!cur_) {
                 return std::nullopt;
             }
-            // std::cerr << 1 << std::endl;
             auto result = std::make_pair(cur_->key, cur_->value);
             cur_ = cur_->links[0];
             return result;
@@ -90,7 +88,6 @@ class MemTableImpl : public IMemTable {
     };
 
     void InsertNode(const std::shared_ptr<Node>& node) {
-        amu_ += node->key.user_key.size() * sizeof(uint8_t) + sizeof(node->key.sequence_number) + sizeof(node->key.type) + node->value.size() * sizeof(uint8_t);
         std::uniform_int_distribution<int> hit(0, 1);
         do {
             node->links.push_back(nullptr);
@@ -108,6 +105,7 @@ class MemTableImpl : public IMemTable {
                 }
             }
         }
+        amu_ += node->key.user_key.size() + sizeof(node->key.sequence_number) + sizeof(node->key.type) + node->value.size() + node->links.size() * sizeof(Node*);
     }
 
    private:

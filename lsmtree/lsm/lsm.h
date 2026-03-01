@@ -138,4 +138,6 @@ std::unique_ptr<ILSM> MakeLsm(const LsmOptions& options, std::shared_ptr<ILevels
 // Create a granular LSM instance (multiple size-bounded files per level)
 std::unique_ptr<ILSM> MakeGranularLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes = new uint64_t());
 
+std::unique_ptr<ILSM> MakeLeveledLsm(const GranularLsmOptions& options, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer> sstable_factory, uint64_t* read_bytes = new uint64_t());
+
 }  // namespace lsm

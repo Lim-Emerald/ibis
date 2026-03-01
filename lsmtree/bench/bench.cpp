@@ -54,25 +54,25 @@ void SetCounters(benchmark::State& state, Options options, Results results) {
     state.counters["lvl"] = benchmark::Counter(results.lsmtree_max_level);
 }
 
-Results TestWriteRead(Options rt_options, lsm::GranularLsmOptions options) {
+Results TestWriteRead(Options options, GranularLsmOptions lsm_options) {
     Results results;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
-    std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory, &results.bytes_read_in_real_world);
+    auto files_provider = std::make_shared<TestLevelsProvider>();
+    std::shared_ptr<ILSM> lsm = MakeLeveledLsm(lsm_options, files_provider, sstable_factory, &results.bytes_read_in_real_world);
 
     std::vector<UserKey> keys;
     std::vector<Value> values;
 
     std::mt19937 rng(42);
 
-    for (int i = 0; i < rt_options.keys_count; ++i) {
-        keys.push_back(GenerateRandomKey(rng, rt_options.min_key_len, rt_options.max_key_len));
-        values.push_back(GenerateRandomKey(rng, rt_options.min_value_len, rt_options.max_value_len));
+    for (int i = 0; i < options.keys_count; ++i) {
+        keys.push_back(GenerateRandomKey(rng, options.min_key_len, options.max_key_len));
+        values.push_back(GenerateRandomKey(rng, options.min_value_len, options.max_value_len));
     }
 
     results.bytes_written_in_ideal_world = 0;
-    for (int i = 0; i < rt_options.operations; ++i) {
+    for (int i = 0; i < options.operations; ++i) {
         UserKey key = keys[rng() % keys.size()];
         Value value = values[rng() % values.size()];
 
@@ -92,7 +92,7 @@ Results TestWriteRead(Options rt_options, lsm::GranularLsmOptions options) {
 
     results.bytes_read_in_ideal_world = 0;
     results.bytes_read_in_real_world = 0;
-    for (int i = 0; i < rt_options.operations; ++i) {
+    for (int i = 0; i < options.operations; ++i) {
         UserKey key = keys[rng() % keys.size()];
 
         auto t0 = Clock::now();
@@ -187,12 +187,12 @@ void BigTablesWithoutFilter(benchmark::State& state) {
     }
 }
 
-Results TestChaos(Options rt_options, lsm::GranularLsmOptions options) {
+Results TestChaos(Options rt_options, GranularLsmOptions options) {
     Results results;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
-    std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory, &results.bytes_read_in_real_world);
+    auto files_provider = std::make_shared<TestLevelsProvider>();
+    std::shared_ptr<ILSM> lsm = MakeLeveledLsm(options, files_provider, sstable_factory, &results.bytes_read_in_real_world);
 
     std::vector<UserKey> keys;
     std::vector<Value> values;
@@ -295,18 +295,18 @@ void BigTablesChaos(benchmark::State& state) {
 }
 
 struct EnvLSM {
-    std::shared_ptr<TestVectorLevelsProvider> files_provider;
+    std::shared_ptr<TestLevelsProvider> files_provider;
     std::shared_ptr<ILSM> lsm;
     std::vector<UserKey> keys;
     std::vector<Value> values;
     uint64_t bytes_read_in_real_world = 0;
 };
 
-EnvLSM GenerateLSM(Options rt_options, lsm::GranularLsmOptions options) {
+EnvLSM GenerateLSM(Options rt_options, GranularLsmOptions options) {
     EnvLSM env;
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    env.files_provider = std::make_shared<TestVectorLevelsProvider>();
-    env.lsm = MakeGranularLsm(options, env.files_provider, sstable_factory, &env.bytes_read_in_real_world);
+    env.files_provider = std::make_shared<TestLevelsProvider>();
+    env.lsm = MakeLeveledLsm(options, env.files_provider, sstable_factory, &env.bytes_read_in_real_world);
 
     std::mt19937 rng(42);
 
@@ -324,7 +324,7 @@ EnvLSM GenerateLSM(Options rt_options, lsm::GranularLsmOptions options) {
     return env;
 }
 
-Results TestScan(EnvLSM env, Options rt_options, lsm::GranularLsmOptions options) {
+Results TestScan(EnvLSM env, Options rt_options, GranularLsmOptions options) {
     Results results;
     results.lsmtree_max_level = env.files_provider->NumLevels();
 
@@ -429,22 +429,7 @@ BENCHMARK(MemTable)
     ->Unit(benchmark::kMillisecond)
     ;
 
-BENCHMARK(MemTableChaos)
-    ->UseRealTime()
-    ->Args({300, 1000})
-    ->Args({2000, 6000})
-    ->Args({10000, 50000})
-    ->Unit(benchmark::kMillisecond)
-    ;
-
 BENCHMARK(Hard)
-    ->UseRealTime()
-    ->Args({300, 1000})
-    ->Args({2000, 6000})
-    ->Unit(benchmark::kMillisecond)
-    ;
-
-BENCHMARK(HardChaos)
     ->UseRealTime()
     ->Args({300, 1000})
     ->Args({2000, 6000})
@@ -455,6 +440,42 @@ BENCHMARK(HardWithoutFilter)
     ->UseRealTime()
     ->Args({300, 1000})
     ->Args({2000, 6000})
+    ->Unit(benchmark::kMillisecond)
+    ;
+
+BENCHMARK(BigTables)
+    ->UseRealTime()
+    ->Args({300, 1000})
+    ->Args({1000, 3000})
+    ->Unit(benchmark::kMillisecond)
+    ;
+
+BENCHMARK(BigTablesWithoutFilter)
+    ->UseRealTime()
+    ->Args({300, 1000})
+    ->Args({1000, 3000})
+    ->Unit(benchmark::kMillisecond)
+    ;
+
+BENCHMARK(MemTableChaos)
+    ->UseRealTime()
+    ->Args({300, 1000})
+    ->Args({2000, 6000})
+    ->Args({10000, 50000})
+    ->Unit(benchmark::kMillisecond)
+    ;
+
+BENCHMARK(HardChaos)
+    ->UseRealTime()
+    ->Args({300, 1000})
+    ->Args({2000, 6000})
+    ->Unit(benchmark::kMillisecond)
+    ;
+
+BENCHMARK(BigTablesChaos)
+    ->UseRealTime()
+    ->Args({300, 1000})
+    ->Args({1000, 3000})
     ->Unit(benchmark::kMillisecond)
     ;
 
@@ -469,26 +490,6 @@ BENCHMARK(HardScanWithoutFilter)
     ->UseRealTime()
     ->Args({300, 1000, 20, 100})
     ->Args({2000, 6000, 100, 20})
-    ->Unit(benchmark::kMillisecond)
-    ;
-
-BENCHMARK(BigTables)
-    ->UseRealTime()
-    ->Args({300, 1000})
-    ->Args({1000, 3000})
-    ->Unit(benchmark::kMillisecond)
-    ;
-BENCHMARK(BigTablesChaos)
-    ->UseRealTime()
-    ->Args({300, 1000})
-    ->Args({1000, 3000})
-    ->Unit(benchmark::kMillisecond)
-    ;
-
-BENCHMARK(BigTablesWithoutFilter)
-    ->UseRealTime()
-    ->Args({300, 1000})
-    ->Args({1000, 3000})
     ->Unit(benchmark::kMillisecond)
     ;
 

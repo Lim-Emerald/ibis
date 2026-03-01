@@ -13,7 +13,7 @@ namespace {
 
 TEST(LSMGranular, PutGet) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{'a'};
@@ -27,7 +27,7 @@ TEST(LSMGranular, PutGet) {
 
 TEST(LSMGranular, Delete) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{'a'};
@@ -48,7 +48,7 @@ TEST(LSMGranular, MultipleFlushesLatestWins) {
     options.memtable_bytes = 1'000;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -93,7 +93,7 @@ TEST(LSMGranular, WriteAmplificationBounded) {
     options.bloom_filter_size = 1024;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -139,7 +139,7 @@ TEST(LSMGranular, SearchComplexityByKeyAge) {
     options.bloom_filter_size = 128;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -184,7 +184,7 @@ TEST(LSMGranular, SearchComplexityByKeyAge) {
 
 TEST(LSMGranular, GetWithSequenceNumber) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{.memtable_bytes = 100}, files_provider, sstable_factory);
 
     UserKey k{1, 2, 3};
@@ -216,7 +216,7 @@ TEST(LSMGranular, GetWithSequenceNumber) {
 
 TEST(LSMGranular, ScanMultipleKeys) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{1};
@@ -239,7 +239,7 @@ TEST(LSMGranular, ScanMultipleKeys) {
 
 TEST(LSMGranular, ScanWithRange) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     for (int i = 0; i < 10; ++i) {
@@ -260,7 +260,7 @@ TEST(LSMGranular, ScanWithRange) {
 
 TEST(LSMGranular, ScanSkipsTombstones) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     UserKey k1{1};
@@ -285,7 +285,7 @@ TEST(LSMGranular, ScanSkipsTombstones) {
 
 TEST(LSMGranular, ScanDeduplicatesVersions) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{}, files_provider, sstable_factory);
 
     UserKey k{1};
@@ -306,7 +306,7 @@ TEST(LSMGranular, ScanDeduplicatesVersions) {
 
 TEST(LSMGranular, ScanAcrossLevels) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{.memtable_bytes = 128}, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -343,7 +343,7 @@ TEST(LSMGranular, ScanAcrossLevels) {
 
 TEST(LSMGranular, ScanWithSequenceNumber) {
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(GranularLsmOptions{.memtable_bytes = 128}, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -394,7 +394,7 @@ TEST(LSMGranular, Structure) {
     options.bloom_filter_size = 1024;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
@@ -444,7 +444,7 @@ TEST(LSMGranular, CompactionIsGranular) {
     options.level_size_multiplier = 2;
 
     std::shared_ptr<ISSTableSerializer> sstable_factory = MakeSSTableFileFactory();
-    auto files_provider = std::make_shared<TestVectorLevelsProvider>();
+    auto files_provider = std::make_shared<TestLevelsProvider>();
     std::shared_ptr<ILSM> lsm = MakeGranularLsm(options, files_provider, sstable_factory);
 
     std::vector<UserKey> keys;
