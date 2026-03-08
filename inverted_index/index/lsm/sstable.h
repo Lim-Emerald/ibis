@@ -3,9 +3,9 @@
 #include <memory>
 #include <utility>
 
-#include <index/common/stream.h>
-#include <index/common/types.h>
-#include <index/storage/file.h>
+#include "index/common/stream.h"
+#include "index/common/types.h"
+#include "index/storage/file.h"
 
 namespace invindex::lsm {
 
@@ -14,6 +14,7 @@ namespace invindex::lsm {
 // SSTable stores internal keys; LSM composes user operations
 // into internal keys before writing.
 
+template <typename Value>
 class ISSTableBuilder {
    public:
     // Precondition: calls to Add must provide entries in strictly increasing
@@ -26,6 +27,7 @@ class ISSTableBuilder {
     virtual ~ISSTableBuilder() = default;
 };
 
+template <typename Value>
 class ISSTableReader {
    public:
     // Iterator over (internal_key, value) in internal key order
@@ -40,7 +42,11 @@ class ISSTableReader {
     // - kNotFound: user_key does not appear in this table
     // If sequence_number is specified, returns the entry with the largest sequence_number <= given sequence_number
     enum class GetKind { kNotFound, kDeletion, kFound };
-    virtual GetKind Get(const UserKey& user_key, Value* out_value) const = 0;
+    virtual GetKind Get(const UserKey& user_key, Value& out_value) const = 0;
+
+    virtual std::optional<UserKey> LowerBound(const UserKey& user_key, Value& out_value) const = 0;
+
+    virtual std::optional<UserKey> UpperBound(const UserKey& user_key, Value& out_value) const = 0;
 
     virtual ~ISSTableReader() = default;
 };
@@ -49,18 +55,21 @@ class ISSTableReader {
 // Implementations define the on-disk/in-memory byte format. LSM should not
 // assume any specific encoding and must go through this factory.
 // File-backed factory: preferred scalable backend (auto-grows via IFile)
+template <typename Value>
 class ISSTableSerializer {
    public:
-    // Read entire table image from file starting at offset 0 up to file->Size().
-    virtual std::shared_ptr<ISSTableReader> FromFile(const std::shared_ptr<const storage::IFile>& file) const = 0;
-
     // Prepare to write a table image into an empty file from offset 0.
     // Implementations may truncate the file to 0.
-    virtual std::unique_ptr<ISSTableBuilder> NewFileBuilder(const std::shared_ptr<storage::IFile>& file) const = 0;
+    virtual std::unique_ptr<ISSTableBuilder<Value>> NewFileBuilder(const std::shared_ptr<storage::IFile>& file) const = 0;
+
+    // Read entire table image from file starting at offset 0 up to file->Size().
+    virtual std::shared_ptr<ISSTableReader<Value>> FromFile(const std::shared_ptr<const storage::IFile>& file) const = 0;
 
     virtual ~ISSTableSerializer() = default;
 };
 
-std::shared_ptr<ISSTableSerializer> MakeSSTableFileFactory();
+std::shared_ptr<ISSTableSerializer<DefaultValue>> MakeDefaultSSTableFileFactory();
+
+std::shared_ptr<ISSTableSerializer<IndexValue>> MakeIndexSSTableFileFactory();
 
 }  // namespace invindex::lsm

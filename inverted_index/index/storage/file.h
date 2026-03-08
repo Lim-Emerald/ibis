@@ -22,12 +22,16 @@ class IFile {
 
 class BufferedMemoryFile : public IFile {
    public:
-    BufferedMemoryFile(std::string path, uint64_t table_id, const std::shared_ptr<IReadBufferPool>& buffer_pool, uint64_t frame_size) : table_id_(table_id), frame_size_(frame_size), buffer_pool_(buffer_pool), path_(path) {}
+    BufferedMemoryFile(std::string path, uint64_t table_id, const std::shared_ptr<IReadBufferPool>& buffer_pool, uint64_t frame_size)
+        : table_id_(table_id), frame_size_(frame_size), buffer_pool_(buffer_pool), path_(path) {}
 
     std::vector<char> Read(uint64_t offset, uint64_t bytes) const override {
         if (offset + bytes > Size()) {
             throw std::runtime_error(std::string(__PRETTY_FUNCTION__) + ": failed to read " + std::to_string(bytes) + " bytes from offset " + std::to_string(offset) + " (file size is " +
                                      std::to_string(size_) + ")");
+        }
+        if (bytes == 0) {
+            return {};
         }
         std::vector<char> result(bytes);
         uint64_t l = offset / frame_size_, r = (offset + bytes - 1) / frame_size_;

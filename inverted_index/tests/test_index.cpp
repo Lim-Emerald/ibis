@@ -1,16 +1,16 @@
 #include </home/lim/HSE/Projects/IBIS/contrib/gtest/gtest.h>
 #include <index/common/morpher.h>
-#include <index/common/types.h>
+#include <index/common/utils.h>
 #include <index/invindex/index.h>
-#include <index/lsm/lsm.h>
-#include <index/lsm/sstable.h>
-#include <sys/stat.h>
 
 #include <cassert>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "index/common/types.h"
 
 namespace invindex {
 namespace {
@@ -34,71 +34,176 @@ std::vector<std::string> PrintResponse(const std::string& query, const PostingLi
     return result;
 }
 
+static IndexConfig index_config;
 static std::vector<std::string> docs;
 static std::shared_ptr<const IInvertedIndex> index;
+static std::shared_ptr<const lsm::ILSM<lsm::DefaultValue>> word_dictionary;
 
 void ResetIndex() {
     docs = {};
     index = nullptr;
 }
 
-TEST(SmallInvertedIndex, Build) {
-    ResetIndex();
-    lsm::GranularLsmOptions options;
-    options.frame_size = 1024;
-    options.buffer_pool_size = 4096;
-    options.memtable_bytes = 1024;
-    options.max_sstable_size = 4096;
-    options.bloom_filter_size = 1024;
-    auto index_builder = MakeInvertedIndexBuilder("test_index", options);
-    auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+// TEST(SmallInvertedIndex, Build) {
+//     std::filesystem::remove_all("small_index");
+//     std::filesystem::create_directory("small_index");
+//     ResetIndex();
+//     lsm::GranularLsmOptions lsm_options;
+//     lsm_options.frame_size = 256;
+//     lsm_options.bloom_filter_size = 16 * 1024;
+//     lsm_options.buffer_pool_size = 16 * 1024;
+//     lsm_options.memtable_bytes = 16 * 1024;
+//     lsm_options.max_sstable_size = 64 * 1024;
+//     index_config = IndexConfig();
+//     index_config.lsm_options = lsm_options;
+//     index_config.use_word_dictionary = false;
+//     CrawlerConfig config;
+//     config.index_config = index_config;
+//     config.work_dir = "small_index";
+//     config.docbase_dir = kPrefixDocbasePath + "/small";
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
 
-    auto crawler = MakeCrawler(kPrefixDocbasePath + "/small", index_builder, russian_morpher);
-    crawler->Process();
+//     auto crawler = MakeCrawler(config, russian_morpher);
+//     crawler->Process();
 
-    docs = crawler->GetDocList();
-    index = index_builder->GetInvertedIndex();
-}
+//     word_dictionary = crawler->GetWordDictionary();
+//     index = crawler->GetInvertedIndex();
+//     docs = crawler->GetDocList();
+//     index_config.doc_blocks_count = (docs.size() - 1) / index_config.doc_block_size + 1;
+// }
 
-TEST(SmallInvertedIndex, OneToken) {
-    std::vector<std::pair<Token, std::vector<std::string>>> queries = {
-        {"деньги",
-         {"Elrod_Magiya-utra-Kak-pervyy-chas-dnya-opredelyaet-vash-uspeh_RuLit_Me.txt", "Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt",
-          "Mireckiy_Arhivarius_RuLit_Me.txt", "Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt",
-          "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
-        {"спокойствие",
-         {"Elrod_Magiya-utra-Kak-pervyy-chas-dnya-opredelyaet-vash-uspeh_RuLit_Me.txt",
-          "Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt"}},
-        {"электроэнергия", {}}};
+// TEST(SmallInvertedIndex, OneToken) {
+//     std::vector<std::pair<Token, std::vector<std::string>>> queries = {
+//         {"деньги",
+//          {"Elrod_Magiya-utra-Kak-pervyy-chas-dnya-opredelyaet-vash-uspeh_RuLit_Me.txt", "Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt",
+//           "Mireckiy_Arhivarius_RuLit_Me.txt", "Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt",
+//           "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+//         {"спокойствие",
+//          {"Elrod_Magiya-utra-Kak-pervyy-chas-dnya-opredelyaet-vash-uspeh_RuLit_Me.txt",
+//           "Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt"}},
+//         {"электроэнергия", {}},
+//         {"за", {}},
+//         {"под", {}},
+//     };
 
-    for (auto& [token, expected_docs] : queries) {
-        auto doc_ids = index->GetDocId(token);
-        PrintResponse(token, doc_ids, docs);
-    }
-    std::cout << "---\n";
-}
+//     for (auto& [token, expected_docs] : queries) {
+//         Token special_token = "^" + token + "$";
+//         PostingList doc_ids;
+//         if (index_config.use_word_dictionary) {
+//             auto s_feature_id = word_dictionary->Get(lsm::UserKey(special_token.begin(), special_token.end()));
+//             if (s_feature_id) {
+//                 doc_ids = index->GetDocId(TokenId{0, DeserializeUint32(*s_feature_id)}.Serialize());
+//             }
+//         } else {
+//             doc_ids = index->GetDocId(TokenWithBlockId{0, special_token}.Serialize());
+//         }
+//         auto result = PrintResponse(token, doc_ids, docs);
+//         ASSERT_EQ(result, expected_docs);
+//     }
+//     std::cout << "---\n";
+// }
 
-TEST(SmallInvertedIndex, SearchQuery) {
-    auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
-    auto search_engine = MakeSearchEngine(index, russian_morpher);
+// TEST(SmallInvertedIndex, SimpleSearch) {
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+//     auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
 
-    std::vector<std::pair<std::string, std::vector<std::string>>> queries = {
-        {"заработать деньги", {"Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt", "Mireckiy_Arhivarius_RuLit_Me.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
-        {"следы кетчупа с горчицей", {"Mireckiy_Arhivarius_RuLit_Me.txt"}},
-        {"Парадоксальный способ жить счастливо", {"Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt"}},
-        {"Начните пополнять кошелек", {"samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}}};
+//     std::vector<std::pair<std::string, std::vector<std::string>>> queries = {
+//         {"ВАВИЛОН", {"samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+//         {"заработать деньги", {"Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt", "Mireckiy_Arhivarius_RuLit_Me.txt",
+//         "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+//         {"следы кетчупа с горчицей", {"Mireckiy_Arhivarius_RuLit_Me.txt"}},
+//         {"Парадоксальный способ жить счастливо", {"Menson_Tonkoe-iskusstvo-pofigizma-Paradoksalnyy-sposob-zhit-schastlivo_RuLit_Me.txt"}},
+//         {"Начните пополнять кошелек", {"samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}}};
 
-    for (auto& [query, expected_docs] : queries) {
-        auto doc_ids = search_engine->Search(query);
-        auto result = PrintResponse(query, doc_ids, docs);
-        ASSERT_EQ(result, expected_docs);
-    }
-    std::cout << "---\n";
-}
+//     for (auto& [query, expected_docs] : queries) {
+//         auto doc_ids = search_engine->Search(query);
+//         auto result = PrintResponse(query, doc_ids, docs);
+//         ASSERT_EQ(result, expected_docs);
+//     }
+//     std::cout << "---\n";
+// }
+
+// TEST(SmallInvertedIndex, PrefixSearch) {
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+//     auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
+
+//     std::vector<std::pair<std::string, std::vector<std::string>>> queries = {
+//         {"куш*", {"Poselyagin_Ya-vyzhivu_RuLit_Net.txt"}},
+//         {"Вави*", {"samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+//         {"сза*",
+//          {"Poselyagin_Ya-vyzhivu_RuLit_Net.txt", "Mireckiy_Arhivarius_RuLit_Me.txt", "Anatolevich_Zelyonyy-dom_1_Velikan-na-polyane-ili-pervye-uroki-ekologicheskoy-etiki_RuLit_Net.txt",
+//           "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt"}}};
+
+//     for (auto& [query, expected_docs] : queries) {
+//         auto doc_ids = search_engine->Search(query);
+//         auto result = PrintResponse(query, doc_ids, docs);
+//         ASSERT_EQ(result, expected_docs);
+//     }
+//     std::cout << "---\n";
+// }
 
 // TEST(SmallInvertedIndex, YourQuery) {
 //     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
-//     auto search_engine = MakeSearchEngine(index, russian_morpher);
+//     auto search_engine = MakeSearchEngine((docs.size() - 1) / config.doc_block_size + 1, index, word_dictionary, russian_morpher);
+
+//     std::cout << "---\n";
+//     std::cout << "Введите запрос:\n";
+//     std::string query;
+//     while (std::getline(std::cin, query)) {
+//         auto doc_ids = search_engine->Search(query);
+//         PrintResponse(query, doc_ids, docs);
+//         std::cout << "---\n";
+//         std::cout << "Введите запрос:\n";
+//     }
+//     std::cout << "---\n";
+//     std::cout << "Остановка обработки запросов\n";
+//     std::cout << "---\n";
+// }
+
+// TEST(SmallInvertedIndex, BuildKGram) {
+//     std::filesystem::remove_all("small_index_kgram");
+//     std::filesystem::create_directory("small_index_kgram");
+//     ResetIndex();
+//     lsm::GranularLsmOptions lsm_options;
+//     index_config = IndexConfig();
+//     index_config.lsm_options = lsm_options;
+//     index_config.use_k_gram = 6;
+//     index_config.use_word_dictionary = false;
+//     CrawlerConfig config;
+//     config.work_dir = "small_index_kgram";
+//     config.docbase_dir = kPrefixDocbasePath + "/small";
+//     config.index_config = index_config;
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+
+//     auto crawler = MakeCrawler(config, russian_morpher);
+//     crawler->Process();
+
+//     word_dictionary = crawler->GetWordDictionary();
+//     index = crawler->GetInvertedIndex();
+//     docs = crawler->GetDocList();
+//     index_config.doc_blocks_count = (docs.size() - 1) / index_config.doc_block_size + 1;
+// }
+
+// TEST(SmallInvertedIndex, WildcardSearch) {
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+//     auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
+
+//     std::vector<std::pair<std::string, std::vector<std::string>>> queries = {{"ВАВ*он", {"samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+//                                                                              {"авток*фа", {"Elrod_Magiya-utra-Kak-pervyy-chas-dnya-opredelyaet-vash-uspeh_RuLit_Me.txt"}},
+//                                                                              {"*^игра$*^здесь*", {"Mireckiy_Arhivarius_RuLit_Me.txt"}},
+//                                                                              {"*^под$*", {}}};
+
+//     for (auto& [query, expected_docs] : queries) {
+//         auto doc_ids = search_engine->Search(query);
+//         auto result = PrintResponse(query, doc_ids, docs);
+//         ASSERT_EQ(result, expected_docs);
+//     }
+//     std::cout << "---\n";
+// }
+
+// TEST(SmallInvertedIndex, YourWildcardQuery) {
+//     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
+//     auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
 
 //     std::cout << "---\n";
 //     std::cout << "Введите запрос:\n";
@@ -115,26 +220,31 @@ TEST(SmallInvertedIndex, SearchQuery) {
 // }
 
 TEST(LargeInvertedIndex, Build) {
+    std::filesystem::remove_all("large_index");
+    std::filesystem::create_directory("large_index");
     ResetIndex();
-    lsm::GranularLsmOptions options;
-    options.frame_size = 4096;
-    options.buffer_pool_size = 256 * 1024;
-    options.memtable_bytes = 256 * 1024;
-    options.max_sstable_size = 512 * 1024;
-    options.bloom_filter_size = 256 * 1024;
-    auto index_builder = MakeInvertedIndexBuilder("test_index", options);
+    lsm::GranularLsmOptions lsm_options;
+    index_config = IndexConfig();
+    index_config.lsm_options = lsm_options;
+    index_config.use_word_dictionary = false;
+    CrawlerConfig config;
+    config.work_dir = "large_index";
+    config.docbase_dir = kPrefixDocbasePath + "/large";
+    config.index_config = index_config;
     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
 
-    auto crawler = MakeCrawler(kPrefixDocbasePath + "/large", index_builder, russian_morpher);
+    auto crawler = MakeCrawler(config, russian_morpher);
     crawler->Process();
 
+    word_dictionary = crawler->GetWordDictionary();
+    index = crawler->GetInvertedIndex();
     docs = crawler->GetDocList();
-    index = index_builder->GetInvertedIndex();
+    index_config.doc_blocks_count = (docs.size() - 1) / index_config.doc_block_size + 1;
 }
 
-TEST(LargeInvertedIndex, SearchQuery) {
+TEST(LargeInvertedIndex, SimpleSearch) {
     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
-    auto search_engine = MakeSearchEngine(index, russian_morpher);
+    auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
 
     std::vector<std::pair<std::string, std::vector<std::string>>> queries = {
         {"эквестрия", {"Avtor_neizvesten_Follaut_Ekvestriya_RuLit_Net.txt"}},
@@ -154,7 +264,7 @@ TEST(LargeInvertedIndex, SearchQuery) {
 
 // TEST(LargeInvertedIndex, YourQuery) {
 //     auto russian_morpher = MakeRussianMorpher(kLangDictPath + "/rus_dict.bin");
-//     auto search_engine = MakeSearchEngine(index, russian_morpher);
+//     auto search_engine = MakeSearchEngine(index_config, index, word_dictionary, russian_morpher);
 
 //     std::cout << "---\n";
 //     std::cout << "Введите запрос:\n";

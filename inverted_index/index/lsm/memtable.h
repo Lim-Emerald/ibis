@@ -2,16 +2,18 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
-#include <index/common/stream.h>
-#include <index/common/types.h>
+#include "index/common/stream.h"
+#include "index/common/types.h"
 
 namespace invindex::lsm {
 
+template <typename Value>
 class IMemTable {
    public:
-    enum class GetKind { kNotFound, kDeletion, kFound };
+    enum class GetKind { kNotFound, /*kDeletion,*/ kFound };
     // sequence_number is a monotonically increasing counter within the LSM.
     // Internal key ordering is defined as: (user_key ascending, sequence_number descending).
     // If Add is called without monotonically increasing sequence_number, behavior is undefined.
@@ -20,14 +22,18 @@ class IMemTable {
 
     // Write a tombstone for user_key at the given sequence_number.
     // Tombstones are visible in scans (as internal-key entries) and affect Get semantics.
-    virtual void Delete(const UserKey& user_key) = 0;
+    // virtual void Delete(const UserKey& user_key) = 0;
 
     // Returns the latest entry kind for user_key within this MemTable.
     // kFound: out_value is set to the latest value
     // kDeletion: the latest entry is a tombstone
     // kNotFound: key not present in this MemTable
     // If sequence_number is specified, returns the entry with the largest sequence_number <= given sequence_number
-    virtual GetKind Get(const UserKey& user_key, Value* out_value) const = 0;
+    virtual GetKind Get(const UserKey& user_key, Value& out_value) const = 0;
+
+    virtual std::optional<UserKey> LowerBound(const UserKey& user_key, Value& out_value) const = 0;
+
+    virtual std::optional<UserKey> UpperBound(const UserKey& user_key, Value& out_value) const = 0;
 
     // Iterator over (internal_key, value) in internal key order
     // (user_key ascending, sequence_number descending). Returning internal keys
@@ -44,7 +50,8 @@ class IMemTable {
     virtual ~IMemTable() = default;
 };
 
-// Minimal constructor for a default std::map-backed MemTable.
-std::shared_ptr<IMemTable> MakeMemTable(uint32_t max_level);
+std::shared_ptr<IMemTable<DefaultValue>> MakeDefaultMemTable(uint32_t max_level);
+
+std::shared_ptr<IMemTable<IndexValue>> MakeIndexMemTable(uint32_t max_level);
 
 }  // namespace invindex::lsm
