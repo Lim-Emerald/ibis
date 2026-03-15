@@ -211,7 +211,14 @@ class DefaultLSMImpl : public ILSM<DefaultValue> {
     }
 
     std::shared_ptr<IStream<std::pair<UserKey, DefaultValue>>> Scan(const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key) const override {
-        return std::make_shared<LeveledLSMStream>(mem_table_, levels_provider_, sstable_factory_, start_key, end_key);
+        std::optional<InternalKey> st_key, ed_key;
+        if (start_key) {
+            st_key = {*start_key};
+        }
+        if (end_key) {
+            ed_key = {*end_key};
+        }
+        return std::make_shared<LeveledLSMStream>(mem_table_, levels_provider_, sstable_factory_, st_key, ed_key);
     }
 
     virtual ~DefaultLSMImpl() { std::filesystem::remove_all(dir_); }
@@ -323,7 +330,7 @@ class DefaultLSMImpl : public ILSM<DefaultValue> {
     class LeveledLSMStream : public IStream<std::pair<UserKey, DefaultValue>> {
        public:
         LeveledLSMStream(std::shared_ptr<IMemTable<DefaultValue>> mem_table, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer<DefaultValue>> sstable_factory,
-                         const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key)
+                         const std::optional<InternalKey>& start_key, const std::optional<InternalKey>& end_key)
             : start_key_(start_key), end_key_(end_key) {
             std::vector<std::shared_ptr<IStream<std::pair<InternalKey, DefaultValue>>>> sources;
             sources.push_back(mem_table->MakeScan());
@@ -338,12 +345,12 @@ class DefaultLSMImpl : public ILSM<DefaultValue> {
 
         std::optional<std::pair<UserKey, DefaultValue>> Next() {
             if (start_key_.has_value()) {
-                while (object_.has_value() && object_->first.user_key < *start_key_) {
+                while (object_.has_value() && object_->first < *start_key_) {
                     object_ = merge_scan_->Next();
                 }
                 start_key_ = std::nullopt;
             }
-            if (!object_.has_value() || (end_key_.has_value() && object_->first.user_key >= *end_key_)) {
+            if (!object_.has_value() || (end_key_.has_value() && object_->first >= *end_key_)) {
                 return std::nullopt;
             }
             auto result = *object_;
@@ -357,8 +364,8 @@ class DefaultLSMImpl : public ILSM<DefaultValue> {
        private:
         std::optional<std::pair<InternalKey, DefaultValue>> object_;
         std::shared_ptr<IMerger<InternalKey, DefaultValue>> merge_scan_;
-        std::optional<UserKey> start_key_;
-        std::optional<UserKey> end_key_;
+        std::optional<InternalKey> start_key_;
+        std::optional<InternalKey> end_key_;
     };
 
     class LevelLSMStream : public IStream<std::pair<InternalKey, DefaultValue>> {
@@ -509,7 +516,14 @@ class IndexLSMImpl : public ILSM<IndexValue> {
     }
 
     std::shared_ptr<IStream<std::pair<UserKey, IndexValue>>> Scan(const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key) const override {
-        return std::make_shared<LeveledLSMStream>(mem_table_, levels_provider_, sstable_factory_, start_key, end_key);
+        std::optional<InternalKey> st_key, ed_key;
+        if (start_key) {
+            st_key = {*start_key};
+        }
+        if (end_key) {
+            ed_key = {*end_key};
+        }
+        return std::make_shared<LeveledLSMStream>(mem_table_, levels_provider_, sstable_factory_, st_key, ed_key);
     }
 
     virtual ~IndexLSMImpl() { std::filesystem::remove_all(dir_); }
@@ -625,7 +639,7 @@ class IndexLSMImpl : public ILSM<IndexValue> {
     class LeveledLSMStream : public IStream<std::pair<UserKey, IndexValue>> {
        public:
         LeveledLSMStream(std::shared_ptr<IMemTable<IndexValue>> mem_table, std::shared_ptr<ILevelsProvider> levels_provider, std::shared_ptr<ISSTableSerializer<IndexValue>> sstable_factory,
-                         const std::optional<UserKey>& start_key, const std::optional<UserKey>& end_key)
+                         const std::optional<InternalKey>& start_key, const std::optional<InternalKey>& end_key)
             : start_key_(start_key), end_key_(end_key) {
             std::vector<std::shared_ptr<IStream<std::pair<InternalKey, IndexValue>>>> sources;
             sources.push_back(mem_table->MakeScan());
@@ -640,12 +654,12 @@ class IndexLSMImpl : public ILSM<IndexValue> {
 
         std::optional<std::pair<UserKey, IndexValue>> Next() {
             if (start_key_.has_value()) {
-                while (object_.has_value() && object_->first.user_key < *start_key_) {
+                while (object_.has_value() && object_->first < *start_key_) {
                     object_ = merge_scan_->Next();
                 }
                 start_key_ = std::nullopt;
             }
-            if (!object_.has_value() || (end_key_.has_value() && object_->first.user_key >= *end_key_)) {
+            if (!object_.has_value() || (end_key_.has_value() && object_->first >= *end_key_)) {
                 return std::nullopt;
             }
             auto result = *object_;
@@ -661,8 +675,8 @@ class IndexLSMImpl : public ILSM<IndexValue> {
        private:
         std::optional<std::pair<InternalKey, IndexValue>> object_;
         std::shared_ptr<IMerger<InternalKey, IndexValue>> merge_scan_;
-        std::optional<UserKey> start_key_;
-        std::optional<UserKey> end_key_;
+        std::optional<InternalKey> start_key_;
+        std::optional<InternalKey> end_key_;
     };
 
     class LevelLSMStream : public IStream<std::pair<InternalKey, IndexValue>> {

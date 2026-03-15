@@ -13,9 +13,9 @@ namespace invindex {
 
 struct IndexConfig {
     bool use_word_dictionary = true;
-    uint8_t doc_blocks_count = 0;
     uint8_t use_k_gram = 0;
-    uint32_t doc_block_size = 1024;
+    uint16_t doc_block_size = 1024;
+    uint32_t doc_count = 0;
     std::string index_dir = "index";
     lsm::GranularLsmOptions lsm_options;
 };
@@ -25,7 +25,7 @@ class IInvertedIndex {
     virtual PostingList GetDocId(IndexKey index_key) const = 0;
 
     // [start_token_id, end_token_id)
-    virtual std::vector<PostingList> Scan(const std::optional<IndexKey>& start_key, const std::optional<IndexKey>& end_key) const = 0;
+    virtual PostingList Scan(const std::optional<IndexKey>& start_key, const std::optional<IndexKey>& end_key) const = 0;
 
     virtual ~IInvertedIndex() = default;
 };

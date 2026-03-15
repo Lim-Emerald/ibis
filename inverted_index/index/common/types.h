@@ -75,11 +75,7 @@ struct InternalKey {
     // sequence_number descending (newer first), then type ascending.
     std::strong_ordering operator<=>(const InternalKey &key) const {
         {
-            std::strong_ordering key_cmp = user_key <=> key.user_key;
-            return key_cmp;
-            // if (key_cmp != std::strong_ordering::equal) {
-            //     return key_cmp;
-            // }
+            return user_key <=> key.user_key;
         }
         // {
         //     std::strong_ordering seq_cmp = key.sequence_number <=> sequence_number;
