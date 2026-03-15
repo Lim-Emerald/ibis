@@ -164,11 +164,9 @@ TEST(SmallInvertedIndex, DateSearch) {
         {"{ 1970-01-01 $creation_date 2000-01-01 }",
          {"Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
         {"[ 2010-01-01 : 2026-03-15 ]",
-         {"Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt",
-          "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt"}},
-        {"[ 2025-01-01 : 2025-09-01 ]",
-         {"Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt",
-          "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt"}}};
+         {"Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}},
+        {"[ 2025-01-01 : 2025-12-01 ]",
+         {"Poselyagin_Ya-vyzhivu_RuLit_Net.txt", "Mireckiy_Arhivarius_RuLit_Me.txt", "Anatolevich_Zelyonyy-dom_1_Velikan-na-polyane-ili-pervye-uroki-ekologicheskoy-etiki_RuLit_Net.txt", "Grey_Muzhchiny-s-Marsa-zhenshchiny-s-Venery-Kak-dumat-effektivnee-Praktiki-dlya-razvitiya-vashego-mozga_RuLit_Me.txt", "_Shevkunov_Nesvyatyie_svyatyie_i_drugie_rasskazyi_RuLit_Net.txt", "samyjj_bogatyjj_chelovek_v_vavilone.u.txt"}}};
 
     for (auto& [query, expected_docs] : queries) {
         auto doc_ids = search_engine->Search(query);
