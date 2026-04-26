@@ -56,5 +56,7 @@ else ()
 endif ()
 
 add_subdirectory(inverted_index)
+add_subdirectory(any_index)
 add_subdirectory(lsmtree)
 add_subdirectory(strutext)
+add_subdirectory(fm_index)
