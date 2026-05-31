@@ -29,7 +29,7 @@ TEST(Ukkonen, SmartTestUkkonen) {
 
 namespace {
 
-struct TestFmIndex {
+struct FmIndexTest {
     std::string request;
     uint64_t count;
     std::vector<uint64_t> locate;
@@ -45,7 +45,7 @@ TEST(FmIndex, SmallRequests) {
     }
     auto fm_index = FMIndex(merged_str, 64);
 
-    std::vector<TestFmIndex> tests = {
+    std::vector<FmIndexTest> tests = {
         {
             .request = "bra",
             .count = 2,
@@ -89,7 +89,7 @@ TEST(FmIndex, RepeatedBlocks) {
     }
     auto fm_index = FMIndex(merged_str, 64);
 
-    std::vector<TestFmIndex> tests = {
+    std::vector<FmIndexTest> tests = {
         {
             .request = "abc",
             .count = 11,
@@ -161,12 +161,12 @@ TEST(FmIndex, RandomDNA) {
     merged_str.back() = '!';
     auto fm_index = FMIndex(merged_str, 64);
 
-    std::vector<TestFmIndex> tests;
+    std::vector<FmIndexTest> tests;
 
     uint64_t test_count = 50, test_len = 30;
     while (--test_count) {
         auto test_dna = GenDNA(test_len);
-        TestFmIndex test = {test_dna, 0, {}};
+        FmIndexTest test = {test_dna, 0, {}};
         for (size_t pos = 0; pos + test_len <= merged_str.size(); ++pos) {
             bool eq = true;
             for (size_t shift = 0; shift < test_dna.size(); ++shift) {

@@ -113,7 +113,7 @@ private:
     std::unordered_map<char, std::vector<uint64_t>> occ_;
 };
 
-FMIndex::FMIndex(const std::string& s, uint64_t k) : impl_(std::make_shared<FMIndex::Impl>(s, k)) {
+FMIndex::FMIndex(const std::string& s, uint64_t k) : impl_(std::make_unique<FMIndex::Impl>(s, k)) {
 }
 
 uint64_t FMIndex::Count(const std::string& request) const {
