@@ -124,4 +124,6 @@ std::vector<uint64_t> FMIndex::Locate(const std::string& request) const {
     return impl_->Locate(request);
 }
 
+FMIndex::~FMIndex() = default;
+
 } // namespace fm_index

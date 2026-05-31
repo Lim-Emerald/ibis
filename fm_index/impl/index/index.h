@@ -14,7 +14,7 @@ public:
 
     std::vector<uint64_t> Locate(const std::string& request) const;
 
-    ~FMIndex() = default;
+    ~FMIndex();
 
 private:
     class Impl;
